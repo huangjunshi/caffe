@@ -78,6 +78,10 @@ message LayerParameter {
   // For data layers, specify if we want to randomly mirror data.
   optional bool mirror = 21 [default = false];
 
+  // The multiview_test is for the data layer to test the augmented images
+  // each image is augmented by 10 times (four corners, one center, and flips)
+  optional bool multiview = 22 [default = false];
+
   // The blobs containing the numeric parameters of the layer
   repeated BlobProto blobs = 50;
   // The ratio that is multiplied on the global learning rate. If you want to set
@@ -139,8 +143,6 @@ message SolverParameter {
   optional bool snapshot_diff = 16 [ default = false];
   // the mode solver will use: 0 for CPU and 1 for GPU. Use GPU in default.
   optional int32 solver_mode = 17 [default = 1];
-  // the device_id will that be used in GPU mode. Use device_id=0 in default.
-  optional int32 device_id = 18 [default = 0];
 }
 
 // A message that stores the solver snapshots

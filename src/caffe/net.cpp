@@ -113,7 +113,8 @@ void Net<Dtype>::Init(const NetParameter& param) {
     // LOG(INFO) << "Setting up " << layer_names_[i];
     layers_[i]->SetUp(bottom_vecs_[i], &top_vecs_[i]);
     for (int topid = 0; topid < top_vecs_[i].size(); ++topid) {
-      LOG(INFO) << "Top shape: " << top_vecs_[i][topid]->channels() << " "
+      LOG(INFO) << "Top shape: " << top_vecs_[i][topid]->num() << " " 
+          << top_vecs_[i][topid]->channels() << " "
           << top_vecs_[i][topid]->height() << " "
           << top_vecs_[i][topid]->width();
     }
@@ -146,6 +147,7 @@ void Net<Dtype>::Init(const NetParameter& param) {
 template <typename Dtype>
 void Net<Dtype>::GetLearningRateAndWeightDecay() {
   LOG(INFO) << "Collecting Learning Rate and Weight Decay.";
+  layer_param_names_.clear();
   for (int i = 0; i < layers_.size(); ++i) {
     vector<shared_ptr<Blob<Dtype> > >& layer_blobs = layers_[i]->blobs();
     for (int j = 0; j < layer_blobs.size(); ++j) {
@@ -154,14 +156,23 @@ void Net<Dtype>::GetLearningRateAndWeightDecay() {
     // push the learning rate mutlipliers
     if (layers_[i]->layer_param().blobs_lr_size()) {
       CHECK_EQ(layers_[i]->layer_param().blobs_lr_size(), layer_blobs.size());
+
       for (int j = 0; j < layer_blobs.size(); ++j) {
         float local_lr = layers_[i]->layer_param().blobs_lr(j);
         CHECK_GE(local_lr, 0.);
         params_lr_.push_back(local_lr);
+
+        std::ostringstream str_stream;
+        str_stream << (j + 1);
+        layer_param_names_.push_back(layer_names_[i] + ", blob " + str_stream.str());
       }
     } else {
       for (int j = 0; j < layer_blobs.size(); ++j) {
         params_lr_.push_back(1.);
+
+        std::ostringstream str_stream;
+        str_stream << (j + 1);
+        layer_param_names_.push_back(layer_names_[i] + ", blob " + str_stream.str());
       }
     }
     // push the weight decay multipliers
@@ -226,13 +237,20 @@ string Net<Dtype>::Forward(const string& input_blob_protos) {
 template <typename Dtype>
 Dtype Net<Dtype>::Backward() {
   Dtype loss = 0;
+  avg_accuracy_ = 0;
   for (int i = layers_.size() - 1; i >= 0; --i) {
     if (layer_need_backward_[i]) {
       Dtype layer_loss = layers_[i]->Backward(
           top_vecs_[i], true, &bottom_vecs_[i]);
       loss += layer_loss;
+
+      // GetAccuracy of current batch images
+      // except the softmax_loss_layer, 
+      // all the other layers return 0.
+      avg_accuracy_ += float(layers_[i]->GetAccuracy());
     }
   }
+  // LOG(INFO) << "Training Accuracy in Net:" << avg_accuracy_;
   return loss;
 }
 

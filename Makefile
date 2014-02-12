@@ -69,9 +69,15 @@ MKL_LIB_DIR := $(MKL_DIR)/lib $(MKL_DIR)/lib/intel64
 
 INCLUDE_DIRS += ./src ./include $(CUDA_INCLUDE_DIR) $(MKL_INCLUDE_DIR)
 LIBRARY_DIRS += $(CUDA_LIB_DIR) $(MKL_LIB_DIR)
-LIBRARIES := cudart cublas curand mkl_rt pthread \
-	glog protobuf leveldb snappy boost_system \
-	opencv_core opencv_highgui opencv_imgproc
+# LIBRARIES := cudart cublas curand protobuf opencv_core opencv_highgui \
+	glog mkl_rt mkl_intel_thread leveldb snappy pthread boost_system \
+	opencv_imgproc
+
+
+LIBRARIES := cudart cublas curand protobuf opencv_core opencv_highgui \
+	glog mkl_rt mkl_intel_lp64 mkl_core mkl_intel_thread iomp5 m leveldb snappy pthread boost_system \
+	opencv_imgproc
+
 PYTHON_LIBRARIES := boost_python python2.7
 WARNINGS := -Wall
 
@@ -121,7 +127,7 @@ mat: init $(STATIC_NAME) $(MAT$(PROJECT)_SRC)
 	@echo
 
 $(NAME): init $(PROTO_OBJS) $(OBJS)
-	$(CXX) -shared -o $(NAME) $(OBJS) $(CXXFLAGS) $(LDFLAGS) $(WARNINGS)
+	$(CXX) -shared -o $(NAME) $(OBJS) $(LDFLAGS) $(WARNINGS)
 	@echo
 
 $(STATIC_NAME): init $(PROTO_OBJS) $(OBJS)
@@ -132,10 +138,10 @@ runtest: test
 	for testbin in $(TEST_BINS); do $$testbin $(TEST_GPUID); done
 
 $(TEST_BINS): %.testbin : %.o $(GTEST_OBJ) $(STATIC_NAME) $(TEST_HDRS)
-	$(CXX) $< $(GTEST_OBJ) $(STATIC_NAME) -o $@ $(CXXFLAGS) $(LDFLAGS) $(WARNINGS)
+	$(CXX) $< $(GTEST_OBJ) $(STATIC_NAME) -o $@ $(LDFLAGS) $(WARNINGS)
 
 $(EXAMPLE_BINS): %.bin : %.o $(STATIC_NAME)
-	$(CXX) $< $(STATIC_NAME) -o $@ $(CXXFLAGS) $(LDFLAGS) $(WARNINGS)
+	$(CXX) $< $(STATIC_NAME) -o $@ $(LDFLAGS) $(WARNINGS)
 	@echo
 
 $(OBJS): $(PROTO_GEN_CC) $(HXX_SRCS)
@@ -193,7 +199,6 @@ clean:
 	@- $(RM) $(PROTO_GEN_HEADER) $(PROTO_GEN_CC) $(PROTO_GEN_PY)
 	@- $(RM) include/$(PROJECT)/proto/$(PROJECT).pb.h
 	@- $(RM) python/$(PROJECT)/proto/$(PROJECT)_pb2.py
-	@- $(RM) python/$(PROJECT)/*.so
 	@- $(RM) -rf $(BUILD_DIR)
 	@- $(RM) -rf $(DISTRIBUTE_DIR)
 

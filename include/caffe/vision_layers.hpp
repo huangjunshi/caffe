@@ -215,6 +215,7 @@ class Im2colLayer : public Layer<Dtype> {
   int CHANNELS_;
   int HEIGHT_;
   int WIDTH_;
+  int PAD_;
 };
 
 
@@ -269,6 +270,7 @@ class ConvolutionLayer : public Layer<Dtype> {
   int STRIDE_;
   int NUM_;
   int CHANNELS_;
+  int PAD_;
   int HEIGHT_;
   int WIDTH_;
   int NUM_OUTPUT_;
@@ -318,6 +320,7 @@ class DataLayer : public Layer<Dtype> {
   shared_ptr<Blob<Dtype> > prefetch_data_;
   shared_ptr<Blob<Dtype> > prefetch_label_;
   Blob<Dtype> data_mean_;
+  int data_augment_scale_;
 };
 
 
@@ -404,6 +407,11 @@ class SoftmaxWithLossLayer : public Layer<Dtype> {
   virtual void SetUp(const vector<Blob<Dtype>*>& bottom,
       vector<Blob<Dtype>*>* top);
 
+  virtual const Dtype GetAccuracy() {
+    // LOG(INFO) << "Training Accuracy in Layer before Return:" << batch_accuracy_;
+    return batch_accuracy_;
+  }
+
  protected:
   virtual void Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       vector<Blob<Dtype>*>* top);
@@ -420,6 +428,8 @@ class SoftmaxWithLossLayer : public Layer<Dtype> {
   // Vector holders to call the underlying softmax layer forward and backward.
   vector<Blob<Dtype>*> softmax_bottom_vec_;
   vector<Blob<Dtype>*> softmax_top_vec_;
+
+  Dtype batch_accuracy_;
 };
 
 

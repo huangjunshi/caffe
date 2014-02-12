@@ -58,6 +58,9 @@ void SoftmaxLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   for (int i = 0; i < num; ++i) {
     caffe_scal<Dtype>(dim, Dtype(1.) / scale_data[i], top_data + i * dim);
   }
+
+  // LOG(INFO) << "SoftmaxLayer: " << (*top)[0]->num() << ", " << (*top)[0]->channels() << ", " << (*top)[0]->height() << ", " << (*top)[0]->width();
+  // LOG(INFO) << "SoftmaxLayer: " << ((*top)[0])->cpu_data()[0] << ", " << ((*top)[0])->cpu_data()[1] << ", " << ((*top)[0])->cpu_data()[2];
 }
 
 template <typename Dtype>
@@ -118,6 +121,9 @@ void SoftmaxLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
   // Do division
   kernel_softmax_div<Dtype><<<CAFFE_GET_BLOCKS(num * dim), CAFFE_CUDA_NUM_THREADS>>>(
       num, dim, scale_data, top_data);
+
+  // LOG(INFO) << "SoftmaxLayer: " << (*top)[0]->num() << ", " << (*top)[0]->channels() << ", " << (*top)[0]->height() << ", " << (*top)[0]->width();
+  // LOG(INFO) << "SoftmaxLayer: " << ((*top)[0])->gpu_data()[0] << ", " << ((*top)[0])->gpu_data()[1] << ", " << ((*top)[0])->gpu_data()[2];
 }
 
 template <typename Dtype>

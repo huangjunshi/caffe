@@ -40,9 +40,6 @@ Solver<Dtype>::Solver(const SolverParameter& param)
 template <typename Dtype>
 void Solver<Dtype>::Solve(const char* resume_file) {
   Caffe::set_mode(Caffe::Brew(param_.solver_mode()));
-  if (param_.solver_mode() && param_.has_device_id()) {
-    Caffe::SetDevice(param_.device_id());
-  }
   Caffe::set_phase(Caffe::TRAIN);
   LOG(INFO) << "Solving " << net_->name();
   PreSolve();
@@ -56,11 +53,17 @@ void Solver<Dtype>::Solve(const char* resume_file) {
   // For a network that is trained by the solver, no bottom or top vecs
   // should be given, and we will just provide dummy vecs.
   vector<Blob<Dtype>*> bottom_vec;
+  float avg_accuracy = 0.; // the accuracy of net on training data
   while (iter_++ < param_.max_iter()) {
     Dtype loss = net_->ForwardBackward(bottom_vec);
+    avg_accuracy += net_->get_avg_accuracy();
     ComputeUpdateValue();
     net_->Update();
 
+    // Check if we need to do snapshot
+    if (param_.snapshot() && iter_ % param_.snapshot() == 0) {
+      Snapshot();
+    }
     if (param_.display() && iter_ % param_.display() == 0) {
       LOG(INFO) << "Iteration " << iter_ << ", loss = " << loss;
     }
@@ -69,14 +72,18 @@ void Solver<Dtype>::Solve(const char* resume_file) {
       Caffe::set_phase(Caffe::TEST);
       Test();
       Caffe::set_phase(Caffe::TRAIN);
-    }
-    // Check if we need to do snapshot
-    if (param_.snapshot() && iter_ % param_.snapshot() == 0) {
-      Snapshot();
+
+      avg_accuracy /= param_.test_interval();
+      LOG(INFO) << "Accuracy of Training Data: " << avg_accuracy;
+      avg_accuracy = 0.;
     }
   }
-  // After the optimization is done, always do a snapshot.
+  // After the optimization is done, always do a test and snapshot.
   iter_--;
+  Caffe::set_phase(Caffe::TEST);
+  Test();
+  Caffe::set_phase(Caffe::TRAIN);
+  
   Snapshot();
   LOG(INFO) << "Optimization Done.";
 }
@@ -84,7 +91,7 @@ void Solver<Dtype>::Solve(const char* resume_file) {
 
 template <typename Dtype>
 void Solver<Dtype>::Test() {
-  LOG(INFO) << "Iteration " << iter_ << ", Testing net";
+  LOG(INFO) << "Testing net";
   NetParameter net_param;
   net_->ToProto(&net_param);
   CHECK_NOTNULL(test_net_.get())->CopyTrainedLayersFrom(net_param);
@@ -111,8 +118,15 @@ void Solver<Dtype>::Test() {
     }
   }
   for (int i = 0; i < test_score.size(); ++i) {
-    LOG(INFO) << "Test score #" << i << ": "
-        << test_score[i] / param_.test_iter();
+    if (0 == i) {
+      LOG(INFO) << "Test accuracy: " << test_score[i] / param_.test_iter();
+    }
+    else if (1 == i) {
+      LOG(INFO) << "Test loss: " << test_score[i] / param_.test_iter();
+    }
+    else {
+      LOG(INFO) << "Test score #" << i << ": " << test_score[i] / param_.test_iter(); 
+    }
   }
 }
 
@@ -254,6 +268,22 @@ void SGDSolver<Dtype>::ComputeUpdateValue() {
   default:
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
+  // if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
+  //   vector<string>& layer_names = this->net_->get_layer_names();
+  //   for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+  //     string layer_name = layer_names[param_id];
+  //     Dtype abs_avg_update = 0.;
+  //     Dtype avg_update = 0.;
+  //     const Dtype* diff = net_params[param_id]->cpu_diff();
+  //     for (int update_idx = 0; update_idx < net_params[param_id]->count(); ++update_idx) {
+  //       abs_avg_update += diff[update_idx] > 0 ? diff[update_idx] : -diff[update_idx];
+  //       avg_update += diff[update_idx];
+  //     }
+  //     abs_avg_update /= net_params[param_id]->count();
+  //     avg_update /= net_params[param_id]->count();
+  //     LOG(INFO) << "\tMean update (abs) for " << layer_name << " are " << avg_update << " (" << abs_avg_update << ")";
+  //   }
+  // }
 }
 
 template <typename Dtype>

@@ -42,46 +42,93 @@ void* DataLayerPrefetch(void* layer_pointer) {
   for (int itemid = 0; itemid < batchsize; ++itemid) {
     // get a blob
     CHECK(layer->iter_);
+    CHECK(layer->prefetch_data_);
     CHECK(layer->iter_->Valid());
     datum.ParseFromString(layer->iter_->value().ToString());
     const string& data = datum.data();
     if (cropsize) {
       CHECK(data.size()) << "Image cropping only support uint8 data";
-      int h_off, w_off;
       // We only do random crop when we do training.
       if (Caffe::phase() == Caffe::TRAIN) {
-        h_off = rand() % (height - cropsize);
-        w_off = rand() % (width - cropsize);
-      } else {
-        h_off = (height - cropsize) / 2;
-        w_off = (width - cropsize) / 2;
-      }
-      if (mirror && rand() % 2) {
-        // Copy mirrored version
-        for (int c = 0; c < channels; ++c) {
-          for (int h = 0; h < cropsize; ++h) {
-            for (int w = 0; w < cropsize; ++w) {
-              top_data[((itemid * channels + c) * cropsize + h) * cropsize
-                       + cropsize - 1 - w] =
-                  (static_cast<Dtype>(
-                      (uint8_t)data[(c * height + h + h_off) * width
-                                    + w + w_off])
-                    - mean[(c * height + h + h_off) * width + w + w_off])
-                  * scale;
+        int h_off = rand() % (height - cropsize);
+        int w_off = rand() % (width - cropsize);
+
+        if (mirror && rand() % 2) {
+          // Copy mirrored version
+          for (int c = 0; c < channels; ++c) {
+            for (int h = 0; h < cropsize; ++h) {
+              for (int w = 0; w < cropsize; ++w) {
+                top_data[((itemid * channels + c) * cropsize + h) * cropsize
+                        + cropsize - 1 - w] =
+                      (static_cast<Dtype>(
+                        (uint8_t)data[(c * height + h + h_off) * width
+                                      + w + w_off])
+                      - mean[(c * height + h + h_off) * width + w + w_off])
+                      * scale;
+              }
+            }
+          }
+        } else {
+          // Normal copy
+          for (int c = 0; c < channels; ++c) {
+            for (int h = 0; h < cropsize; ++h) {
+              for (int w = 0; w < cropsize; ++w) {
+                top_data[((itemid * channels + c) * cropsize + h) * cropsize + w]
+                    = (static_cast<Dtype>(
+                        (uint8_t)data[(c * height + h + h_off) * width
+                                      + w + w_off])
+                        - mean[(c * height + h + h_off) * width + w + w_off])
+                        * scale;
+              }
             }
           }
         }
-      } else {
-        // Normal copy
-        for (int c = 0; c < channels; ++c) {
-          for (int h = 0; h < cropsize; ++h) {
-            for (int w = 0; w < cropsize; ++w) {
-              top_data[((itemid * channels + c) * cropsize + h) * cropsize + w]
-                  = (static_cast<Dtype>(
-                      (uint8_t)data[(c * height + h + h_off) * width
-                                    + w + w_off])
-                     - mean[(c * height + h + h_off) * width + w + w_off])
-                  * scale;
+      } else if (Caffe::phase() == Caffe::TEST) {
+        int h_offs[5] = {(height - cropsize) / 2, 0, (height - cropsize), 0, (height - cropsize)};
+        int w_offs[5] = {(width - cropsize) / 2, 0, 0, (width - cropsize), (width - cropsize)};
+        int data_augment_scale = layer->data_augment_scale_;
+
+        bool isflip;
+        for (int scaleid = 0; scaleid < data_augment_scale; ++scaleid) {
+          int h_off = h_offs[scaleid / 2];
+          int w_off = w_offs[scaleid / 2];
+
+          if (scaleid % 2 == 0) {
+            isflip = rand() % 2;
+          }
+          else {
+            isflip = !isflip;
+          }
+
+          if (isflip) {
+            // Copy mirrored version
+            for (int c = 0; c < channels; ++c) {
+              for (int h = 0; h < cropsize; ++h) {
+                for (int w = 0; w < cropsize; ++w) {
+                  top_data[(((itemid * data_augment_scale + scaleid) * channels + c) * cropsize + h) * cropsize
+                          + cropsize - 1 - w] =
+                        (static_cast<Dtype>(
+                          (uint8_t)data[(c * height + h + h_off) * width
+                                        + w + w_off])
+                        - mean[(c * height + h + h_off) * width + w + w_off])
+                        * scale;
+                }
+              }
+            }
+          }
+          else {
+            // Normal copy
+            for (int c = 0; c < channels; ++c) {
+              for (int h = 0; h < cropsize; ++h) {
+                for (int w = 0; w < cropsize; ++w) {
+                  top_data[(((itemid * data_augment_scale + scaleid) * channels + c) * cropsize + h) * cropsize + w]
+                      = (static_cast<Dtype>(
+                          (uint8_t)data[(c * height + h + h_off) * width
+                                        + w + w_off])
+                          - mean[(c * height + h + h_off) * width + w + w_off])
+                          * scale;
+                }
+              }
             }
           }
         }
@@ -110,7 +157,6 @@ void* DataLayerPrefetch(void* layer_pointer) {
       layer->iter_->SeekToFirst();
     }
   }
-
   return (void*)NULL;
 }
 
@@ -148,6 +194,13 @@ void DataLayer<Dtype>::SetUp(const vector<Blob<Dtype>*>& bottom,
       }
     }
   }
+  // Check if we need to do the multiview testing
+  // If multiview testing, we only augment the number of input images
+  // but keep the number of labels
+  data_augment_scale_ = 1;
+  if (this->layer_param_.multiview()) {
+    data_augment_scale_ = 10;
+  }
   // Read a data point, and use it to initialize the top blob.
   Datum datum;
   datum.ParseFromString(iter_->value().ToString());
@@ -155,15 +208,15 @@ void DataLayer<Dtype>::SetUp(const vector<Blob<Dtype>*>& bottom,
   int cropsize = this->layer_param_.cropsize();
   if (cropsize > 0) {
     (*top)[0]->Reshape(
-        this->layer_param_.batchsize(), datum.channels(), cropsize, cropsize);
+        this->layer_param_.batchsize() * data_augment_scale_, datum.channels(), cropsize, cropsize);
     prefetch_data_.reset(new Blob<Dtype>(
-        this->layer_param_.batchsize(), datum.channels(), cropsize, cropsize));
+        this->layer_param_.batchsize() * data_augment_scale_, datum.channels(), cropsize, cropsize));
   } else {
     (*top)[0]->Reshape(
-        this->layer_param_.batchsize(), datum.channels(), datum.height(),
+        this->layer_param_.batchsize() * data_augment_scale_, datum.channels(), datum.height(),
         datum.width());
     prefetch_data_.reset(new Blob<Dtype>(
-        this->layer_param_.batchsize(), datum.channels(), datum.height(),
+        this->layer_param_.batchsize() * data_augment_scale_, datum.channels(), datum.height(),
         datum.width()));
   }
   LOG(INFO) << "output data size: " << (*top)[0]->num() << ","

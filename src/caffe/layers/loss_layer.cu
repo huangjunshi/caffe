@@ -127,7 +127,7 @@ void AccuracyLayer<Dtype>::SetUp(
   const vector<Blob<Dtype>*>& bottom, vector<Blob<Dtype>*>* top) {
   CHECK_EQ(bottom.size(), 2) << "Accuracy Layer takes two blobs as input.";
   CHECK_EQ(top->size(), 1) << "Accuracy Layer takes 1 output.";
-  CHECK_EQ(bottom[0]->num(), bottom[1]->num())
+  CHECK_EQ(bottom[0]->num() % bottom[1]->num(), 0)
       << "The data and label should have the same number.";
   CHECK_EQ(bottom[1]->channels(), 1);
   CHECK_EQ(bottom[1]->height(), 1);
@@ -140,29 +140,41 @@ void AccuracyLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
     vector<Blob<Dtype>*>* top) {
   Dtype accuracy = 0;
   Dtype logprob = 0;
-  const Dtype* bottom_data = bottom[0]->cpu_data();
+  Dtype* bottom_data = bottom[0]->mutable_cpu_data();
   const Dtype* bottom_label = bottom[1]->cpu_data();
+  // the data has been augmented
   int num = bottom[0]->num();
   int dim = bottom[0]->count() / bottom[0]->num();
-  for (int i = 0; i < num; ++i) {
+  int real_num = bottom[1]->num();
+  CHECK_EQ(num % real_num, 0);
+
+  int augment_scale = num / real_num;
+  for (int i = 0; i < real_num; i++) {
+    for (int scaleid = 1; scaleid < augment_scale; ++scaleid) {
+      for (int j = 0; j < dim; ++j) {
+        bottom_data[i * augment_scale * dim + j] += bottom_data[(i * augment_scale + scaleid) * dim + j];
+      }
+    }
+
     // Accuracy
     Dtype maxval = -FLT_MAX;
     int max_id = 0;
     for (int j = 0; j < dim; ++j) {
-      if (bottom_data[i * dim + j] > maxval) {
-        maxval = bottom_data[i * dim + j];
+      if (bottom_data[i * augment_scale * dim + j] > maxval) {
+        maxval = bottom_data[i * augment_scale * dim + j];
         max_id = j;
       }
     }
     if (max_id == (int)bottom_label[i]) {
       ++accuracy;
     }
-    Dtype prob = max(bottom_data[i * dim + (int)bottom_label[i]], kLOG_THRESHOLD);
+    // Dtype prob = max(bottom_data[i * dim + (int)bottom_label[i]], kLOG_THRESHOLD);
+    Dtype prob = max(bottom_data[i * augment_scale * dim + (int)bottom_label[i]] / augment_scale, kLOG_THRESHOLD);
     logprob -= log(prob);
   }
   // LOG(INFO) << "Accuracy: " << accuracy;
-  (*top)[0]->mutable_cpu_data()[0] = accuracy / num;
-  (*top)[0]->mutable_cpu_data()[1] = logprob / num;
+  (*top)[0]->mutable_cpu_data()[0] = accuracy / real_num;
+  (*top)[0]->mutable_cpu_data()[1] = logprob / real_num;
 }
 
 INSTANTIATE_CLASS(MultinomialLogisticLossLayer);

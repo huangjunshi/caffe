@@ -1,0 +1,14 @@
+train_net: "/home/nb/code/caffe/prototxt/cifar-10_pad.prototxt"
+test_net: "/home/nb/code/caffe/prototxt/cifar-10_val_pad.prototxt"
+test_iter: 100
+test_interval: 1000
+base_lr: 0.01
+lr_policy: "step"
+gamma: 0.1
+stepsize: 8000
+display: 100
+max_iter: 28000
+momentum: 0.9
+weight_decay: 0.004
+snapshot: 30000
+snapshot_prefix: "cifar-10"

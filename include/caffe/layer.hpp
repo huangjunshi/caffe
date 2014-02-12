@@ -48,6 +48,10 @@ class Layer {
     return blobs_;
   }
 
+  virtual const Dtype GetAccuracy() {
+    return Dtype(0);
+  }
+
   // Returns the layer parameter
   const LayerParameter& layer_param() { return layer_param_; }
   // Writes the layer parameter to a protocol buffer
